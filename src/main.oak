@@ -1,0 +1,41 @@
+// albatross
+
+std := import('std')
+str := import('str')
+fmt := import('fmt')
+fs := import('fs')
+path := import('path')
+http := import('http')
+
+Port := 9888
+StaticDir := './static'
+
+server := http.Server()
+
+fn err(msg) {
+	status: 500
+	headers: { 'Content-Type': http.MimeTypes.txt }
+	body: msg
+}
+
+fn serveIndex(end) with fs.readFile(path.join(StaticDir, 'index.html')) fn(file) if file {
+	? -> end(http.NotFound)
+	_ -> end({
+		status: 200
+		headers: { 'Content-Type': http.MimeTypes.html }
+		body: file
+	})
+}
+
+with server.route('/*staticPath') fn(params) {
+	http.handleStatic(path.join(StaticDir, params.staticPath))
+}
+
+with server.route('/') fn(params) fn(req, end) if req.method {
+	'GET' -> serveIndex(end)
+	_ -> end(http.MethodNotAllowed)
+}
+
+server.start(Port)
+std.println('Albatross running at port', Port)
+

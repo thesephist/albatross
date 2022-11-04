@@ -1,0 +1,17 @@
+// uid creates unique short IDs
+
+{
+	map: map
+} := import('std')
+{
+	choice: choice
+} := import('random')
+
+fn newChar {
+	choice('ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789')
+}
+
+fn new {
+	// 16-char IDs
+	'1234567890123456' |> map(newChar)
+}

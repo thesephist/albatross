@@ -1,0 +1,357 @@
+{
+	println: println
+	default: default
+	range: range
+	map: map
+	take: take
+	find: find
+	filter: filter
+} := import('std')
+{
+	trim: trim
+} := import('str')
+fmt := import('fmt')
+datetime := import('datetime')
+uid := import('../lib/uid')
+{
+	Renderer: Renderer
+	h: h
+} := import('../lib/torus.js')
+
+OneDay := 86400
+
+fn dayList(n, dir) {
+	dir := dir |> default(:future)
+	dayCounts := if dir {
+		:future -> range(n)
+		:past -> range(1 - n, 1)
+	}
+	now := int(time())
+	tzOffset := new(Date).getTimezoneOffset()
+	dayCounts |> map(fn(n) {
+		datetime.format(now + n * OneDay, tzOffset) |> take(10)
+	})
+}
+
+fn today() dayList(1).0
+
+fn tomorrow() dayList(2).1
+
+fn yesterday() dayList(2, :past).0
+
+State := {
+	// constants
+	Today: today()
+	WeekDays: dayList(7)
+	MonthDays: dayList(30)
+
+	// state
+	theme: 'light'
+	categories: [
+		{ id: demoID := uid.new(), name: 'Anthropic', color: '#abcdef' }
+		{ id: uid.new(), name: 'Thought & Craft', color: '#fedcba' }
+	]
+	task: ?
+	range: 'today' // 'today', 'week', 'month', 'all'
+	search: ''
+	showDone: false
+	tasks: [
+		{
+			id: uid.new()
+			text: 'Do something.'
+			body: 'This is a body!\nAnother line.'
+			due: '2022-11-04'
+			done: ?
+			cat: demoID
+		}
+		{
+			id: uid.new()
+			text: 'Do something, #2'
+			body: 'This is a body!'
+			due: '2022-11-04'
+			done: ?
+			cat: demoID
+		}
+	]
+}
+
+fn fmtDay(day) {
+	if day {
+		today() -> 'Today'
+		tomorrow() -> 'Tomorrow'
+		yesterday() -> 'Yesterday'
+		// TOOD: improve formatting to say e.g. "Fri, July 30"
+		_ -> day
+	}
+}
+
+r := Renderer('#root')
+
+fn FlexSpacer h(:div, ['flex-spacer'], [])
+
+fn Category(id) {
+	cat := State.categories.(
+		State.categories |> find(fn(c) c.id = id)
+	)
+
+	// TODO: make editable?
+	if cat {
+		? -> h(:div, ['category'], ['Unknown category'])
+		_ -> h(:div, ['category'], {
+			style: {
+				background: cat.color
+			}
+		}, [cat.name])
+	}
+}
+
+fn Task(task) {
+	h(:li, ['task-li'], [
+		h(:div, ['task'], [
+			h(:label, ['task-status'], [
+				h(:input, ['task-checkbox'], {
+					type: 'checkbox'
+					checked: task.done != ?
+				}, {
+					change: fn(evt) {
+						task.done := if task.done {
+							? -> today()
+							_ -> ?
+						}
+						render()
+					}
+				}, [])
+			])
+			h(:div, ['task-content'], [
+				// TODO: make this editable on click?
+				h(:div, ['task-text'], [
+					if task.text |> trim() {
+						'' -> 'Unnamed task'
+						_ -> task.text
+					}
+				])
+				h(:div, ['task-body-preview'], [task.body])
+				if task.cat != ? -> h(:div, ['task-category'], [
+					Category(task.cat)
+				])
+			])
+			h(:button, ['task-open-page'], { title: 'Open task' }, {
+				click: fn {
+					State.task := if State.task {
+						task.id -> ?
+						_ -> task.id
+					}
+					render()
+				}
+			}, ['→'])
+		])
+	])
+}
+
+fn Tasks(tasks) {
+	h(:ul, ['tasks'], {
+		tasks |> with map() fn(task) {
+			Task(task)
+		}
+	})
+}
+
+fn Day(day) {
+	h(:div, ['day'], [
+		h(:div, ['day-header'], [day])
+		Tasks(State.tasks |> filter(fn(task) task.due = day))
+	])
+}
+
+fn TaskList() {
+	// TODO: search results, if search != '', using libsearch over text + body
+
+	h(:div, ['task-list'], [
+		h(:div, ['task-list-search'], [
+			h(:div, ['flex-row'], [
+				h(:input, ['task-list-search-input'], {
+					placeholder: 'Find a task...'
+					value: State.search
+				}, {
+					input: fn(evt) {
+						State.search := evt.target.value
+						render()
+					}
+				}, [])
+				// TODO: add cmd+k to add new task? This should maybe also through GPT allow for natural language input.
+				// e.g. "Get back to Micah by Tuesday for Anthropic"
+				h(:button, ['task-list-new-task'], { title: 'New task' }, {
+					click: fn {
+						id := uid.new()
+						State.tasks << {
+							id: id
+							text: ''
+							body: ''
+							due: today()
+							done: ?
+							cat: ?
+						}
+						State.task := id
+						render()
+
+						// TODO: focus field
+					}
+				}, ['+'])
+			])
+			h(:div, ['flex-row'], [
+				h(:select, ['task-list-range-select'], {}, {
+					change: fn(evt) {
+						State.range := evt.target.value
+						render()
+					}
+				}, {
+					[
+						['today', 'Today']
+						['week', 'This week']
+						['month', 'Next 30 days']
+						['all', 'All tasks']
+					] |> with map() fn(option) {
+						[value, text] := option
+						h(:option, [], { value: value }, {
+							selectd: State.range = value
+						}, [text])
+
+					}
+				})
+				h(:button, ['task-list-show-done'], { title: 'Show tasks marked as done' }, {
+					click: fn {
+						State.showDone := !State.showDone
+						render()
+					}
+				}, [
+					if State.showDone {
+						true -> 'Hide done'
+						_ -> 'Show done'
+					}
+				])
+			])
+		])
+		h(:div, ['task-list-list'], {
+			if State.range {
+				'today' -> [State.Today]
+				'week' -> State.WeekDays
+				'month' -> State.MonthDays
+				'all' -> [] // TODO: we need to display differently
+			} |> with map() fn(day) {
+				Day(day)
+			}
+		})
+	])
+}
+
+fn TaskPageHeader(task) {
+	h(:div, ['task-page-header', 'flex-row'], [
+		if task != ? -> h(:div, ['task-page-header-id'], [task.id])
+		FlexSpacer()
+		h(:button, ['task-page-header-magic'], ['!!']) // TODO: AI features
+	])
+}
+
+fn TaskPage(task) {
+	h(:div, ['task-page'], [
+		TaskPageHeader(task)
+		if task {
+			? -> h(:div, ['task-page-empty'], []) // TODO: DALL-E empty state graphic
+			_ -> h(:div, ['task-editor', 'flex-col'], [
+				h(:input, ['task-editor-text-input'], {
+					value: task.text
+					placeholder: 'Do this'
+				}, {
+					input: fn(evt) {
+						task.text := evt.target.value
+						render()
+					}
+				}, [])
+				// TODO: a way to unset due date; a way to see (change?) done date optionally
+				h(:input, ['task-editor-due-input'], {
+					type: 'date'
+					value: task.due
+				}, {
+					change: fn(evt) {
+						task.due := evt.target.value
+						render()
+					}
+				}, [])
+				h(:select, ['task-editor-category-select'], {}, {
+					change: fn(evt) {
+						task.cat := if value := evt.target.value {
+							'' -> ?
+							_ -> value
+						}
+						render()
+					}
+				}, [
+					h(:option, [], {
+						value: ''
+						selected: task.cat = ?
+					}, ['No category'])
+					h(:optgroup, [], { label: 'Categories' }, {
+						State.categories |> with map() fn(cat) {
+							h(:option, [], {
+								value: cat.id
+								selected: task.cat = cat.id
+							}, [cat.name])
+						}
+					})
+				])
+				h(:textarea, ['task-editor-body'], {
+					value: task.body
+					placeholder: 'Here\'s some more context.'
+				}, {
+					input: fn(evt) {
+						task.body := evt.target.value
+						render()
+					}
+				}, [])
+			])
+		}
+	])
+}
+
+fn render {
+	with r.update() h(:div, ['app'], [
+		h(:header, [], [
+			h(:a, ['logo'], ['Albatross'])
+			FlexSpacer()
+			h(:button, ['theme-button'], {
+				title: if State.theme {
+					'light' -> 'Dark mode'
+					_ -> 'Light mode'
+				}
+			}, {
+				click: fn {
+					State.theme := if State.theme {
+						'light' -> 'dark'
+						_ -> 'light'
+					}
+					render()
+				}
+			}, ['theme!'])
+		])
+		h(:main, [], [
+			TaskList()
+			TaskPage(
+				State.tasks.(
+					State.tasks |> find(fn(t) t.id = State.task)
+				)
+			)
+		])
+		h(:footer, [
+			'Albatross, by '
+			h(:a, [], { href: 'https://thesephist.com', target: '_blank' }, ['L'])
+			' for '
+			h(:a, [], { href: 'https://karinanguyen.com', target: '_blank' }, ['K'])
+			'.'
+		])
+	])
+}
+
+render()
+
+// TODO: re-render once every 30s to update dates
+
