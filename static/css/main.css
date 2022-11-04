@@ -3,7 +3,8 @@ body {
     margin: 0;
 }
 
-body {
+body,
+dialog::backdrop {
     --primary-bg: #fdfeff;
     --primary-text: #111111;
     --secondary-bg: #eeeef3;
@@ -12,6 +13,7 @@ body {
     --active-bg: #cdcfd2;
     --shadow-soft: rgba(0, 0, 0, .15);
     --shadow-hard: rgba(0, 0, 0, .36);
+    --red: #bc0c0c;
 
     --dark-primary-bg: #141516;
     --dark-primary-text: #ebebeb;
@@ -21,6 +23,7 @@ body {
     --dark-active-bg: #626569;
     --dark-shadow-soft: rgba(255, 255, 255, .15);
     --dark-shadow-hard: rgba(255, 255, 255, .36);
+    --dark-red: #d46060;
 }
 
 .dark {
@@ -32,6 +35,7 @@ body {
     --active-bg: var(--dark-active-bg);
     --shadow-soft: var(--dark-shadow-soft);
     --shadow-hard: var(--dark-shadow-hard);
+    --red: var(--dark-red);
 }
 
 body {
@@ -42,6 +46,7 @@ body {
 
 input,
 button,
+select,
 textarea {
     font-size: inherit;
     font-family: inherit;
@@ -61,20 +66,120 @@ li {
 	max-width: 64ch;
 }
 
+dialog {
+    color: var(--primary-text);
+    background: var(--primary-bg);
+    border: 0;
+    border-radius: 6px;
+    box-shadow: 0 2px 52px -6px var(--shadow-hard);
+}
+
+dialog::backdrop {
+    background: var(--shadow-soft);
+}
+
+/* textarea trick */
+
+.textarea-group {
+    position: relative;
+}
+
+body.webkit .textarea-group,
+body.webkit .textarea-itself {
+    /* When path highlight <mark>s are placed into .text-annotations, they
+     * disrupt kerning between letters and punctuation around words in a way
+     * that can't be replicated in a <textarea>. To make text layout in both
+     * environments identical, we turn off kerning. */
+    font-kerning: none;
+}
+
+.textarea-shadow {
+    visibility: hidden;
+}
+
+.textarea-shadow,
+.textarea-itself {
+    border: 0;
+    padding: 0;
+    outline: 0;
+    box-sizing: border-box;
+    line-height: 1.5em;
+    min-height: 1.5em; /* line-height */
+    color: inherit;
+    text-decoration: inherit;
+    width: 100%;
+    margin: 0;
+    background: transparent;
+    word-wrap: break-word;
+    white-space: pre-wrap;
+    -webkit-text-size-adjust: none;
+}
+
+.textarea-itself {
+    resize: none;
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    /* Firefox doesn't extend this block to the bottom of .textarea-group
+     * unless height is set to 100%. */
+    height: 100%;
+}
+
+.textarea-shadow.extra-height {
+    padding-bottom: 1.5em;
+}
+
 /* components */
+
+input:not([type="checkbox"]),
+button,
+select {
+    background: var(--secondary-bg);
+    line-height: 1.5em;
+    border: 0;
+    margin: 0;
+    padding: .3em .7em;
+    border-radius: 4px;
+}
+
+button,
+select,
+input[type="date"],
+input[type="color"] {
+    cursor: pointer;
+    transition: background .2s;
+}
+
+button:hover,
+select:hover,
+input[type="date"]:active,
+input[type="color"]:hover {
+    background: var(--hover-bg);
+}
+
+button:active,
+select:active,
+input[type="date"]:focus,
+input[type="date"]:active,
+input[type="color"]:focus,
+input[type="color"]:active {
+    background: var(--active-bg);
+}
 
 .flex-row {
 	display: flex;
 	flex-direction: row;
 	align-items: center;
-	gap: 16px;
+	gap: 8px;
 }
 
 .flex-col {
 	display: flex;
 	flex-direction: column;
 	align-items: center;
-	gap: 16px;
+	gap: 8px;
 }
 
 .flex-spacer {
@@ -85,45 +190,233 @@ li {
 
 /* layout */
 
+.app {
+    width: 100%;
+    height: 100vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
 header,
 main,
 footer {
 	width: calc(100% - 36px);
-	max-width: 768px;
+	max-width: 1024px;
+	margin: 16px auto;
 }
 
-main {
+header,
+footer {
+    flex-grow: 0;
+    flex-shrink: 1;
+}
+
+header a.logo {
+    color: var(--primary-text);
+    font-weight: bold;
+    text-decoration: none;
+}
+
+header a.logo:hover {
+    text-decoration: underline;
+}
+
+main.flex-row {
 	display: flex;
 	flex-direction: row;
 	gap: 16px;
+    align-items: flex-start;
+    height: 0;
+    flex-grow: 1;
+    margin-bottom: 0;
+}
+
+footer {
+    line-height: 1.5em;
+    font-size: calc(1em - 2px);
+    color: var(--secondary-text);
+}
+
+footer a {
+    color: inherit;
+}
+
+.task-list-list {
+    height: 0;
+    flex-grow: 1;
+    overflow-y: auto;
+}
+
+.task-list {
+    flex-grow: 1;
+    flex-shrink: 0;
+    width: 256px;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.task-list-search {
+    margin-bottom: 8px;
+    flex-grow: 0;
+    flex-shrink: 1;
+}
+
+.task-list-search-row {
+    width: 100%;
+}
+
+.task-list-search-input {
+    width: 0;
+    flex-grow: 1;
+}
+
+.task-list-range-select {
+    width: 0;
+    flex-grow: 1;
+}
+
+.day {
+    margin-bottom: 8px;
+    gap: 4px;
+}
+
+.day-sat .day-header,
+.day-sun .day-header {
+    color: var(--red);
+    border-bottom-color: var(--red);
+}
+
+.day-header {
+    padding: 0.5em 0.8em;
+    font-weight: bold;
+    padding: 0.5em 0 0.3em 0;
+    border-bottom: 2px solid var(--primary-text);
+}
+
+ul.tasks.flex-col {
+    padding-left: 0;
+    gap: 4px;
+    margin: 4px 0;
+}
+
+li.task-li {
+    list-style: none;
+    width: 100%;
+}
+
+.task {
+    cursor: pointer;
+    width: 100%;
+    display: flex;
+    flex-direction: row;
+    gap: 16px;
+    align-items: flex-start;
+    padding: 8px;
+    box-sizing: border-box;
+    border-radius: 4px;
+    transition: background .2s;
+}
+
+.task:hover,
+.task.active {
+    background: var(--secondary-bg);
+}
+
+.task-content {
+    flex-grow: 1;
+    width: 0;
+}
+
+.task-text {
+    line-height: 1.5em;
+}
+
+.task-body-preview {
+    color: var(--secondary-text);
+    font-size: calc(1em - 4px);
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
 }
 
 .category {
+    display: inline-block;
 	color: var(--primary-bg);
+    font-size: calc(1em - 4px);
 	background: var(--secondary-text); /* base color */
+    padding: 0 0.5em;
+    border-radius: 4px;
 }
 
 .dark .category {
 	color: var(--primary-bg); /* override dark mode */
 }
 
-.task {
-
+.task-page {
+    flex-grow: 8;
+    width: 256px;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
 }
 
-.tasks {
-
+.task-page-header {
+    flex-grow: 0;
+    flex-shrink: 0;
 }
 
-.day {
-
+.task-editor {
+    height: 0;
+    flex-grow: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
 }
 
-.day-header {
-
+.task-editor.flex-col {
+    align-items: flex-start;
 }
 
-.day {
+.task-editor-text,
+.task-editor-body {
+    width: 100%;
+}
 
+.task-editor-body {
+    height: 0;
+    flex-grow: 1;
+}
+
+.task-editor-body .textarea-group {
+    min-height: 100%;
+}
+
+.task-editor-text {
+    font-size: 2em;
+}
+
+.task-editor-option-row {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+	gap: 8px;
+    width: 100%;
+    margin: 16px 0;
+}
+
+@media only screen and (max-width: 780px) {
+    .task-list {
+        max-width: unset;
+        width: 0;
+        flex-grow: 1;
+    }
+    .app.no-active-task .task-page {
+        display: none;
+    }
+    .app.active-task .task-list {
+        display: none;
+    }
 }
 

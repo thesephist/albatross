@@ -4,6 +4,7 @@ Description.
 
 ## AI features
 
+- Natural language task input?
 - Clean up these (meeting) notes
 - Encouragements on completion, completion of 5/10/20/50 tasks in one day
 - "How should I start this step?" / "Encourage me!" / "Break it into subtasks"

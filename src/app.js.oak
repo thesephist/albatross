@@ -5,12 +5,17 @@
 	map: map
 	take: take
 	find: find
+	last: last
 	filter: filter
+	reverse: reverse
 } := import('std')
 {
+	lower: lower
 	trim: trim
+	contains?: strContains?
 } := import('str')
 fmt := import('fmt')
+sort := import('sort')
 datetime := import('datetime')
 uid := import('../lib/uid')
 {
@@ -19,6 +24,12 @@ uid := import('../lib/uid')
 } := import('../lib/torus.js')
 
 OneDay := 86400
+ClientRenderer := if {
+	navigator.userAgent |> strContains?('Firefox') -> :gecko
+	navigator.userAgent |> strContains?('Chrome') -> :blink
+	navigator.userAgent |> strContains?('Safari') -> :webkit
+	_ -> :unknownRenderer
+}
 
 fn dayList(n, dir) {
 	dir := dir |> default(:future)
@@ -47,12 +58,13 @@ State := {
 
 	// state
 	theme: 'light'
+	editingCategories?: false
 	categories: [
 		{ id: demoID := uid.new(), name: 'Anthropic', color: '#abcdef' }
 		{ id: uid.new(), name: 'Thought & Craft', color: '#fedcba' }
 	]
 	task: ?
-	range: 'today' // 'today', 'week', 'month', 'all'
+	range: 'week'
 	search: ''
 	showDone: false
 	tasks: [
@@ -73,28 +85,132 @@ State := {
 			cat: demoID
 		}
 	]
+	results: []
+}
+
+fn dayName(day) {
+	d := datetime.parse(day + 'T00:00:00') |>
+		datetime.timestamp() |>
+		datetime.describe()
+	jsd := new(Date)
+	jsd.setFullYear(d.year)
+	jsd.setMonth(d.month - 1)
+	jsd.setDate(d.day)
+
+	if jsd.getDay() {
+		0 -> 'Sun'
+		1 -> 'Mon'
+		2 -> 'Tue'
+		3 -> 'Wed'
+		4 -> 'Thu'
+		5 -> 'Fri'
+		6 -> 'Sat'
+	}
 }
 
 fn fmtDay(day) {
+	d := datetime.parse(day + 'T00:00:00') |>
+		datetime.timestamp() |>
+		datetime.describe()
+
+	monthName := if d.month {
+		1 -> 'Jan'
+		2 -> 'Feb'
+		3 -> 'Mar'
+		4 -> 'Apr'
+		5 -> 'May'
+		6 -> 'Jun'
+		7 -> 'Jul'
+		8 -> 'Aug'
+		9 -> 'Sep'
+		10 -> 'Oct'
+		11 -> 'Nov'
+		12 -> 'Dec'
+	}
+
 	if day {
 		today() -> 'Today'
 		tomorrow() -> 'Tomorrow'
 		yesterday() -> 'Yesterday'
-		// TOOD: improve formatting to say e.g. "Fri, July 30"
-		_ -> day
+		_ -> '{{0}}, {{1}} {{2}}' |> fmt.format(dayName(day), monthName, d.day)
 	}
+}
+
+fn editCategories() {
+	State.editingCategories? := true
+	render()
+
+	document.querySelector('dialog.category-editor').showModal() // show backdrop
+}
+
+fn focusSearchField {
+	if el := document.querySelector('.task-list-search-input') {
+		? -> {}
+		_ -> el.focus()
+	}
+}
+
+fn focusFieldWithDataID(id) {
+	if el := document.querySelector('[data-id="' + id + '"]') {
+		? -> {}
+		_ -> el.focus()
+	}
+}
+
+fn addTaskAndFocus() {
+	id := uid.new()
+	State.tasks << {
+		id: id
+		text: ''
+		body: ''
+		due: today()
+		done: ?
+		cat: ?
+	}
+	State.task := id
+	render()
+
+	focusFieldWithDataID(id)
+}
+
+fn updateSearchResults() {
+	tasks := State.tasks
+	if !State.showDone -> tasks <- tasks |> filter(fn(t) t.done = ?)
+
+	State.results := tasks |> libsearch.search(
+		String(State.search)
+		fn(t) String(t.text + ' ' + t.body)
+		{
+			mode: String('autocomplete')
+		}
+	)
+	render()
 }
 
 r := Renderer('#root')
 
 fn FlexSpacer h(:div, ['flex-spacer'], [])
 
+fn Editable(attrs, handleInput) {
+	h(:div, ['textarea-group'], [
+		h(:div, [
+			'textarea-shadow'
+			if attrs.value |> last() {
+				'\n' -> 'extra-height'
+				_ -> ''
+			}
+		], [attrs.value])
+		h(:textarea, ['textarea-itself'], attrs, {
+			input: handleInput
+		}, [])
+	])
+}
+
 fn Category(id) {
 	cat := State.categories.(
 		State.categories |> find(fn(c) c.id = id)
 	)
 
-	// TODO: make editable?
 	if cat {
 		? -> h(:div, ['category'], ['Unknown category'])
 		_ -> h(:div, ['category'], {
@@ -107,7 +223,13 @@ fn Category(id) {
 
 fn Task(task) {
 	h(:li, ['task-li'], [
-		h(:div, ['task'], [
+		h(:div, [
+			'task'
+			if State.task {
+				task.id -> 'active'
+				_ -> ''
+			}
+		], [
 			h(:label, ['task-status'], [
 				h(:input, ['task-checkbox'], {
 					type: 'checkbox'
@@ -122,8 +244,24 @@ fn Task(task) {
 					}
 				}, [])
 			])
-			h(:div, ['task-content'], [
-				// TODO: make this editable on click?
+			h(:div, ['task-content'], {
+				tabIndex: 0
+			}, {
+				click: fn {
+					State.task := if State.task {
+						task.id -> ?
+						_ -> task.id
+					}
+					render()
+				}
+				keydown: fn(evt) if evt.key = 'Enter' -> {
+					State.task := if State.task {
+						task.id -> ?
+						_ -> task.id
+					}
+					render()
+				}
+			}, [
 				h(:div, ['task-text'], [
 					if task.text |> trim() {
 						'' -> 'Unnamed task'
@@ -135,21 +273,12 @@ fn Task(task) {
 					Category(task.cat)
 				])
 			])
-			h(:button, ['task-open-page'], { title: 'Open task' }, {
-				click: fn {
-					State.task := if State.task {
-						task.id -> ?
-						_ -> task.id
-					}
-					render()
-				}
-			}, ['→'])
 		])
 	])
 }
 
 fn Tasks(tasks) {
-	h(:ul, ['tasks'], {
+	h(:ul, ['tasks', 'flex-col'], {
 		tasks |> with map() fn(task) {
 			Task(task)
 		}
@@ -157,48 +286,36 @@ fn Tasks(tasks) {
 }
 
 fn Day(day) {
-	h(:div, ['day'], [
-		h(:div, ['day-header'], [day])
+	h(:div, ['day', 'day-' + dayName(day) |> lower()], [
+		h(:div, ['day-header'], [
+			fmtDay(day)
+		])
 		Tasks(State.tasks |> filter(fn(task) task.due = day))
 	])
 }
 
 fn TaskList() {
-	// TODO: search results, if search != '', using libsearch over text + body
-
+	// TODO: dall-e generated empty state
 	h(:div, ['task-list'], [
-		h(:div, ['task-list-search'], [
-			h(:div, ['flex-row'], [
+		h(:div, ['task-list-search', 'flex-col'], [
+			h(:div, ['task-list-search-row', 'flex-row'], [
 				h(:input, ['task-list-search-input'], {
-					placeholder: 'Find a task...'
+					placeholder: 'Search {{0}} tasks...' |> fmt.format(State.tasks |> len())
 					value: State.search
 				}, {
 					input: fn(evt) {
 						State.search := evt.target.value
-						render()
+						updateSearchResults()
+					}
+					keydown: fn(evt) {
+						if evt.key = 'Escape' -> evt.target.blur()
 					}
 				}, [])
-				// TODO: add cmd+k to add new task? This should maybe also through GPT allow for natural language input.
-				// e.g. "Get back to Micah by Tuesday for Anthropic"
 				h(:button, ['task-list-new-task'], { title: 'New task' }, {
-					click: fn {
-						id := uid.new()
-						State.tasks << {
-							id: id
-							text: ''
-							body: ''
-							due: today()
-							done: ?
-							cat: ?
-						}
-						State.task := id
-						render()
-
-						// TODO: focus field
-					}
+					click: fn() addTaskAndFocus()
 				}, ['+'])
 			])
-			h(:div, ['flex-row'], [
+			h(:div, ['task-list-search-row', 'flex-row'], [
 				h(:select, ['task-list-range-select'], {}, {
 					change: fn(evt) {
 						State.range := evt.target.value
@@ -213,7 +330,7 @@ fn TaskList() {
 					] |> with map() fn(option) {
 						[value, text] := option
 						h(:option, [], { value: value }, {
-							selectd: State.range = value
+							selected: State.range = value
 						}, [text])
 
 					}
@@ -232,13 +349,14 @@ fn TaskList() {
 			])
 		])
 		h(:div, ['task-list-list'], {
-			if State.range {
-				'today' -> [State.Today]
-				'week' -> State.WeekDays
-				'month' -> State.MonthDays
-				'all' -> [] // TODO: we need to display differently
-			} |> with map() fn(day) {
-				Day(day)
+			if State.search |> trim() {
+				'' -> if State.range {
+					'today' -> [State.Today] |> map(Day)
+					'week' -> State.WeekDays |> map(Day)
+					'month' -> State.MonthDays |> map(Day)
+					'all' -> State.results |> sort.sort(:due) |> reverse() |> map(Task)
+				}
+				_ -> State.results |> map(Task)
 			}
 		})
 	])
@@ -246,77 +364,162 @@ fn TaskList() {
 
 fn TaskPageHeader(task) {
 	h(:div, ['task-page-header', 'flex-row'], [
-		if task != ? -> h(:div, ['task-page-header-id'], [task.id])
+		h(:button, ['task-page-header-close'], { title: 'Close' }, {
+			click: fn {
+				State.task := ?
+				render()
+			}
+		}, ['x'])
 		FlexSpacer()
+		h(:button, ['task-page-header-delete'], { title: 'Delete task' }, {
+			click: fn {
+				State.tasks := State.tasks |> filter(fn(t) t.id != task.id)
+				render()
+			}
+		}, ['del'])
+		h(:button, ['task-page-header-postpone'], ['->']) // TODO: add another day
 		h(:button, ['task-page-header-magic'], ['!!']) // TODO: AI features
 	])
 }
 
 fn TaskPage(task) {
-	h(:div, ['task-page'], [
-		TaskPageHeader(task)
+	h(:div, ['task-page'], {
 		if task {
-			? -> h(:div, ['task-page-empty'], []) // TODO: DALL-E empty state graphic
-			_ -> h(:div, ['task-editor', 'flex-col'], [
-				h(:input, ['task-editor-text-input'], {
-					value: task.text
-					placeholder: 'Do this'
-				}, {
-					input: fn(evt) {
-						task.text := evt.target.value
-						render()
-					}
-				}, [])
-				// TODO: a way to unset due date; a way to see (change?) done date optionally
-				h(:input, ['task-editor-due-input'], {
-					type: 'date'
-					value: task.due
-				}, {
-					change: fn(evt) {
-						task.due := evt.target.value
-						render()
-					}
-				}, [])
-				h(:select, ['task-editor-category-select'], {}, {
-					change: fn(evt) {
-						task.cat := if value := evt.target.value {
-							'' -> ?
-							_ -> value
-						}
-						render()
-					}
-				}, [
-					h(:option, [], {
-						value: ''
-						selected: task.cat = ?
-					}, ['No category'])
-					h(:optgroup, [], { label: 'Categories' }, {
-						State.categories |> with map() fn(cat) {
+			? -> [
+				h(:div, ['task-page-empty'], []) // TODO: DALL-E empty state graphic
+			]
+			_ -> [
+				TaskPageHeader(task)
+				h(:div, ['task-editor', 'flex-col'], [
+					h(:div, ['task-editor-text'], [
+						Editable({
+							value: task.text
+							placeholder: 'Do this'
+							'data-id': task.id
+						}, fn(evt) {
+							task.text := evt.target.value
+							render()
+						})
+					])
+					h(:div, ['task-editor-option-row', 'flex-row'], [
+						h(:input, ['task-editor-due-input'], {
+							type: 'date'
+							value: task.due
+						}, {
+							change: fn(evt) {
+								task.due := evt.target.value
+								render()
+							}
+						}, [])
+						h(:button, ['task-editor-due-reset'], { title: 'Unset due date' }, {
+							click: fn {
+								task.due := ?
+								render()
+							}
+						}, ['Unset'])
+						FlexSpacer()
+						h(:select, ['task-editor-category-select'], {}, {
+							change: fn(evt) {
+								task.cat := if value := evt.target.value {
+									'' -> ?
+									_ -> value
+								}
+								render()
+							}
+						}, [
 							h(:option, [], {
-								value: cat.id
-								selected: task.cat = cat.id
-							}, [cat.name])
-						}
-					})
+								value: ''
+								selected: task.cat = ?
+							}, ['No category'])
+							h(:optgroup, [], { label: 'Categories' }, {
+								State.categories |> with map() fn(cat) {
+									h(:option, [], {
+										value: cat.id
+										selected: task.cat = cat.id
+									}, [cat.name])
+								}
+							})
+						])
+						h(:button, ['task-editor-category-edit'], {}, {
+							click: fn() editCategories()
+						}, ['Edit'])
+					])
+					h(:div, ['task-editor-body'], [
+						Editable({
+							value: task.body
+							placeholder: 'Some more context'
+						}, fn(evt) {
+							task.body := evt.target.value
+							render()
+						})
+					])
 				])
-				h(:textarea, ['task-editor-body'], {
-					value: task.body
-					placeholder: 'Here\'s some more context.'
-				}, {
-					input: fn(evt) {
-						task.body := evt.target.value
-						render()
-					}
-				}, [])
-			])
+			]
 		}
+	})
+}
+
+fn CategoryEditor() {
+	h(:dialog, ['category-editor', 'flex-col'], [
+		h(:ul, ['category-editor-list'], {
+			State.categories |> with map() fn(cat) {
+				h(:li, ['category-editor-item'], [
+					h(:input, ['category-editor-name-input'], {
+						value: cat.name
+						placeholder: 'New category'
+						'data-id': cat.id
+					}, {
+						input: fn(evt) {
+							cat.name := evt.target.value
+							render()
+						}
+					}, [])
+					h(:input, ['category-editor-color-input'], {
+						type: 'color'
+						value: cat.color
+					}, {
+						input: fn(evt) {
+							cat.color := evt.target.value
+							render()
+						}
+					}, [])
+				])
+			}
+		})
+		h(:button, ['category-editor-add'], { title: 'Add category' }, {
+			click: fn {
+				id := uid.new()
+				State.categories << {
+					id: id
+					name: ''
+					color: '#abcdef' // TODO: random color picker?
+				}
+				render()
+
+				focusFieldWithDataID(id)
+			}
+		}, ['+ New Category'])
+		h(:button, ['category-editor-done'], { title: 'Save and close' }, {
+			click: fn {
+				State.editingCategories? := false
+				render()
+			}
+		}, ['Done'])
 	])
 }
 
 fn render {
-	with r.update() h(:div, ['app'], [
-		h(:header, [], [
-			h(:a, ['logo'], ['Albatross'])
+	document.body.classList.toggle('dark', State.theme = 'dark')
+
+	with r.update() h(:div, [
+		'app'
+		if State.task {
+			? -> 'no-active-task'
+			_ -> 'active-task'
+		}
+	], [
+		h(:header, ['flex-row'], [
+			h(:a, ['logo'], { href: '/' }, ['Albatross'])
 			FlexSpacer()
 			h(:button, ['theme-button'], {
 				title: if State.theme {
@@ -333,7 +536,7 @@ fn render {
 				}
 			}, ['theme!'])
 		])
-		h(:main, [], [
+		h(:main, ['flex-row'], [
 			TaskList()
 			TaskPage(
 				State.tasks.(
@@ -342,16 +545,26 @@ fn render {
 			)
 		])
 		h(:footer, [
-			'Albatross, by '
+			'Albatross, a way to organize life, by '
 			h(:a, [], { href: 'https://thesephist.com', target: '_blank' }, ['L'])
 			' for '
 			h(:a, [], { href: 'https://karinanguyen.com', target: '_blank' }, ['K'])
 			'.'
 		])
+		if State.editingCategories? -> CategoryEditor()
 	])
 }
 
-render()
+with document.body.addEventListener('keydown') fn(evt) if [evt.ctrlKey | evt.metaKey, evt.shiftKey, evt.key] {
+	[true, true, 'k'] -> addTaskAndFocus()
+	[true, false, '/']
+	[true, false, 'k'] -> focusSearchField()
+}
 
 // TODO: re-render once every 30s to update dates
+
+// for browser renderer- or engine-dependent hacks, mark the body
+document.body.classList.add(string(ClientRenderer))
+
+render()
 
