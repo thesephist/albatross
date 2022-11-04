@@ -1,0 +1,2 @@
+# albatross
+A friendly assistant
