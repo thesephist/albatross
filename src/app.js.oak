@@ -7,6 +7,7 @@
 	take: take
 	find: find
 	last: last
+	slice: slice
 	filter: filter
 	append: append
 	reverse: reverse
@@ -105,7 +106,7 @@ State := {
 	results: []
 }
 
-sync := with debounce(SyncInterval) fn syncImmediately {
+enqueueSync := with debounce(SyncInterval) fn syncImmediately {
 	State.syncing? := true
 	render()
 
@@ -135,7 +136,11 @@ sync := with debounce(SyncInterval) fn syncImmediately {
 			})
 		}
 	}
+}
 
+fn sync {
+	State.syncing? := true
+	enqueueSync()
 }
 
 fn dayName(day) {
@@ -242,7 +247,7 @@ r := Renderer('#root')
 
 fn FlexSpacer h(:div, ['flex-spacer'], [])
 
-fn Editable(attrs, handleInput, handleEnter) {
+fn Editable(attrs, allowTab?, handleInput, handleEnter) {
 	handleEnter := handleEnter |> default(fn {})
 
 	h(:div, ['textarea-group'], [
@@ -255,7 +260,22 @@ fn Editable(attrs, handleInput, handleEnter) {
 		], [attrs.value])
 		h(:textarea, ['textarea-itself'], attrs, {
 			input: handleInput
-			keydown: fn(evt) if evt.key = 'Enter' -> handleEnter(evt)
+			keydown: fn(evt) if evt.key {
+				'Enter' -> handleEnter(evt)
+				'Tab' -> if allowTab? -> {
+					evt.preventDefault()
+
+					if ? != idx := evt.target.selectionStart -> {
+						val := evt.target.value
+						front := val |> slice(0, idx)
+						back := val |> slice(idx)
+						evt.target.value := front + '\t' + back
+						evt.target.setSelectionRange(idx + 1, idx + 1)
+
+						handleInput(evt)
+					}
+				}
+			}
 		}, [])
 	])
 }
@@ -556,7 +576,7 @@ fn TaskPage(task) {
 							value: task.text
 							placeholder: 'Do this'
 							'data-id': task.id
-						}, fn(evt) {
+						}, false, fn(evt) {
 							task.text := evt.target.value
 							sync()
 							render()
@@ -624,7 +644,7 @@ fn TaskPage(task) {
 							value: task.body
 							placeholder: 'Some more context'
 							'data-id': string(task.id) + '-body'
-						}, fn(evt) {
+						}, true, fn(evt) {
 							task.body := evt.target.value
 							sync()
 							render()
@@ -767,6 +787,15 @@ with document.body.addEventListener('keydown') fn(evt) if [evt.ctrlKey | evt.met
 	[true, true, 'k'] -> addTaskAndFocus()
 }
 
+// prevent close if persisting
+with window.addEventListener('beforeunload') fn(evt) if State.syncing? {
+	false -> evt.returnValue := _
+	_ -> {
+		evt.preventDefault()
+		evt.returnValue := 0 // cannot be null or undefined
+	}
+}
+
 fn enqueueMinutelyUpdate {
 	render()
 	with wait(30) fn {
@@ -782,6 +811,4 @@ document.body.classList.add(string(ClientRenderer))
 updateSearchResults()
 
 render()
-
-// TODO: onbeforeunload
 

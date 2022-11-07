@@ -86,6 +86,7 @@ dialog::backdrop {
 
 .textarea-group {
     position: relative;
+    tab-size: 4;
 }
 
 body.webkit .textarea-group,
