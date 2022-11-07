@@ -15,15 +15,19 @@ dialog::backdrop {
     --shadow-hard: rgba(0, 0, 0, .36);
     --red: #bc0c0c;
 
-    --dark-primary-bg: #141516;
+    --dark-primary-bg: #30373a;
     --dark-primary-text: #ebebeb;
-    --dark-secondary-bg: #30373a;
+    --dark-secondary-bg: #141516;
     --dark-secondary-text: #a4a7a9;
     --dark-hover-bg: #474c50;
     --dark-active-bg: #626569;
     --dark-shadow-soft: rgba(255, 255, 255, .15);
     --dark-shadow-hard: rgba(255, 255, 255, .36);
     --dark-red: #d46060;
+
+	--accent: #bd4444;
+	--hover-accent: #ac3232;
+	--active-accent: #891111;
 }
 
 .dark {
@@ -33,15 +37,13 @@ dialog::backdrop {
     --secondary-text: var(--dark-secondary-text);
     --hover-bg: var(--dark-hover-bg);
     --active-bg: var(--dark-active-bg);
-    --shadow-soft: var(--dark-shadow-soft);
-    --shadow-hard: var(--dark-shadow-hard);
     --red: var(--dark-red);
 }
 
 body {
     font-family: system-ui, sans-serif;
     color: var(--primary-text);
-    background: var(--primary-bg);
+    background: var(--secondary-bg);
 }
 
 input,
@@ -136,12 +138,14 @@ body.webkit .textarea-itself {
 input:not([type="checkbox"]),
 button,
 select {
-    background: var(--secondary-bg);
+    background: var(--primary-bg);
     line-height: 1.5em;
-    border: 0;
+    border: 1px solid var(--hover-bg);
+	box-sizing: border-box;
     margin: 0;
     padding: .3em .7em;
     border-radius: 4px;
+	box-shadow: 0 1px 3px var(--shadow-soft);
 }
 
 button,
@@ -149,14 +153,14 @@ select,
 input[type="date"],
 input[type="color"] {
     cursor: pointer;
-    transition: background .2s;
+    transition: background .2s, box-shadow .3s;
 }
 
 button:hover,
 select:hover,
 input[type="date"]:active,
 input[type="color"]:hover {
-    background: var(--hover-bg);
+	box-shadow: 0 2px 6px var(--shadow-soft);
 }
 
 button:active,
@@ -165,7 +169,12 @@ input[type="date"]:focus,
 input[type="date"]:active,
 input[type="color"]:focus,
 input[type="color"]:active {
-    background: var(--active-bg);
+    background: var(--secondary-bg);
+	box-shadow: 0 1px 4px var(--shadow-soft);
+}
+
+select {
+	height: 2.25em;
 }
 
 .flex-row {
@@ -225,7 +234,7 @@ header a.logo:hover {
 main.flex-row {
 	display: flex;
 	flex-direction: row;
-	gap: 16px;
+	gap: 24px;
     align-items: flex-start;
     height: 0;
     flex-grow: 1;
@@ -272,9 +281,34 @@ footer a {
     flex-grow: 1;
 }
 
+.task-list-new-task,
+.category-editor-add {
+	color: var(--primary-bg);
+	background: var(--accent);
+}
+
+.dark .task-list-new-task,
+.dark .category-editor-add {
+	color: var(--primary-text);
+}
+
+.task-list-new-task:hover,
+.category-editor-add:hover {
+	background: var(--hover-accent);
+}
+
+.task-list-new-task:active,
+.category-editor-add:active {
+	background: var(--active-accent);
+}
+
 .task-list-range-select {
     width: 0;
     flex-grow: 1;
+}
+
+.task-list-list > li.task-li {
+	margin-bottom: 8px;
 }
 
 .day {
@@ -282,6 +316,7 @@ footer a {
     gap: 4px;
 }
 
+.day-overdue .day-header,
 .day-sat .day-header,
 .day-sun .day-header {
     color: var(--red);
@@ -319,9 +354,13 @@ li.task-li {
     transition: background .2s;
 }
 
+.task.task-done .task-text {
+	text-decoration: line-through;
+}
+
 .task:hover,
 .task.active {
-    background: var(--secondary-bg);
+    background: var(--primary-bg);
 }
 
 .task-content {
@@ -331,6 +370,7 @@ li.task-li {
 
 .task-text {
     line-height: 1.5em;
+    word-wrap: break-word;
 }
 
 .task-body-preview {
@@ -348,6 +388,7 @@ li.task-li {
 	background: var(--secondary-text); /* base color */
     padding: 0 0.5em;
     border-radius: 4px;
+	box-shadow: 0 1px 3px var(--shadow-soft);
 }
 
 .dark .category {
@@ -395,15 +436,74 @@ li.task-li {
 
 .task-editor-text {
     font-size: 2em;
+	margin-top: 24px;
+	margin-bottom: 0;
 }
 
 .task-editor-option-row {
     display: flex;
     flex-direction: row;
     align-items: center;
+	justify-content: space-between;
 	gap: 8px;
     width: 100%;
     margin: 16px 0;
+}
+
+.task-editor-option-subrow {
+	width: auto;
+	flex-grow: 0;
+	flex-shrink: 1;
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 8px;
+	min-width: 0;
+}
+
+.task-editor-option-subrow input,
+.task-editor-option-subrow select {
+	flex-grow: 0;
+	flex-shrink: 1;
+	min-width: 0;
+}
+
+dialog.category-editor {
+	padding: 1em;
+	width: calc(100% - 36px);
+	max-width: 360px;
+}
+
+.category-editor-header {
+	margin-bottom: 24px;
+	width: 100%;
+}
+
+dialog h2 {
+	margin: 0;
+}
+
+ul.category-editor-list {
+	padding-left: 0;
+	margin: 0;
+	width: 100%;
+}
+
+li.category-editor-item {
+	list-style: none;
+	width: 100%;
+}
+
+.category-editor-name-input {
+	flex-grow: 1;
+}
+
+.category-editor-color-input {
+	height: 2.25em;
+}
+
+.category-editor-add {
+	width: 100%;
 }
 
 @media only screen and (max-width: 780px) {
@@ -418,5 +518,11 @@ li.task-li {
     .app.active-task .task-list {
         display: none;
     }
+	.task-editor-option-row {
+		flex-direction: column;
+	}
+	.task-editor-option-subrow {
+		width: 100%;
+	}
 }
 

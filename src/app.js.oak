@@ -7,6 +7,7 @@
 	find: find
 	last: last
 	filter: filter
+	append: append
 	reverse: reverse
 } := import('std')
 {
@@ -50,6 +51,13 @@ fn tomorrow() dayList(2).1
 
 fn yesterday() dayList(2, :past).0
 
+fn addDays(day, n) {
+	desc := datetime.parse(day + 'T00:00:00')
+	(datetime.timestamp(desc) + n * OneDay) |>
+		datetime.format() |>
+		take(10)
+}
+
 State := {
 	// constants
 	Today: today()
@@ -58,6 +66,7 @@ State := {
 
 	// state
 	theme: 'light'
+	syncing?: false // TODO: sync error indicator, prevent close if not synced
 	editingCategories?: false
 	categories: [
 		{ id: demoID := uid.new(), name: 'Anthropic', color: '#abcdef' }
@@ -72,7 +81,7 @@ State := {
 			id: uid.new()
 			text: 'Do something.'
 			body: 'This is a body!\nAnother line.'
-			due: '2022-11-04'
+			due: '2022-11-06'
 			done: ?
 			cat: demoID
 		}
@@ -80,7 +89,15 @@ State := {
 			id: uid.new()
 			text: 'Do something, #2'
 			body: 'This is a body!'
-			due: '2022-11-04'
+			due: '2022-11-07'
+			done: ?
+			cat: demoID
+		}
+		{
+			id: uid.new()
+			text: 'Work on ClaudeScript parser'
+			body: 'This is a body!'
+			due: '2022-11-08'
 			done: ?
 			cat: demoID
 		}
@@ -191,7 +208,9 @@ r := Renderer('#root')
 
 fn FlexSpacer h(:div, ['flex-spacer'], [])
 
-fn Editable(attrs, handleInput) {
+fn Editable(attrs, handleInput, handleEnter) {
+	handleEnter := handleEnter |> default(fn {})
+
 	h(:div, ['textarea-group'], [
 		h(:div, [
 			'textarea-shadow'
@@ -202,6 +221,7 @@ fn Editable(attrs, handleInput) {
 		], [attrs.value])
 		h(:textarea, ['textarea-itself'], attrs, {
 			input: handleInput
+			keydown: fn(evt) if evt.key = 'Enter' -> handleEnter(evt)
 		}, [])
 	])
 }
@@ -225,6 +245,10 @@ fn Task(task) {
 	h(:li, ['task-li'], [
 		h(:div, [
 			'task'
+			if task.done {
+				? -> 'task-undone'
+				_ -> 'task-done'
+			}
 			if State.task {
 				task.id -> 'active'
 				_ -> ''
@@ -241,6 +265,12 @@ fn Task(task) {
 							_ -> ?
 						}
 						render()
+
+						// give user a second to visually confirm checked
+						// before removing it from view
+						with wait(1) fn {
+							updateSearchResults()
+						}
 					}
 				}, [])
 			])
@@ -286,12 +316,17 @@ fn Tasks(tasks) {
 }
 
 fn Day(day) {
-	h(:div, ['day', 'day-' + dayName(day) |> lower()], [
-		h(:div, ['day-header'], [
-			fmtDay(day)
+	if dayTasks := State.results |> filter(fn(task) task.due = day) {
+		[] -> ?
+		_ -> h(:div, ['day', 'day-' + dayName(day) |> lower()], [
+			h(:div, ['day-header', 'flex-row'], [
+				fmtDay(day)
+				FlexSpacer()
+				string(len(dayTasks))
+			])
+			Tasks(dayTasks)
 		])
-		Tasks(State.tasks |> filter(fn(task) task.due = day))
-	])
+	}
 }
 
 fn TaskList() {
@@ -307,8 +342,14 @@ fn TaskList() {
 						State.search := evt.target.value
 						updateSearchResults()
 					}
-					keydown: fn(evt) {
-						if evt.key = 'Escape' -> evt.target.blur()
+					keydown: fn(evt) if evt.key = 'Escape' -> {
+						if evt.target.value {
+							'' -> evt.target.blur()
+							_ -> {
+								State.search := ''
+								updateSearchResults()
+							}
+						}
 					}
 				}, [])
 				h(:button, ['task-list-new-task'], { title: 'New task' }, {
@@ -316,7 +357,9 @@ fn TaskList() {
 				}, ['+'])
 			])
 			h(:div, ['task-list-search-row', 'flex-row'], [
-				h(:select, ['task-list-range-select'], {}, {
+				h(:select, ['task-list-range-select'], {
+					value: State.range
+				}, {
 					change: fn(evt) {
 						State.range := evt.target.value
 						render()
@@ -338,7 +381,7 @@ fn TaskList() {
 				h(:button, ['task-list-show-done'], { title: 'Show tasks marked as done' }, {
 					click: fn {
 						State.showDone := !State.showDone
-						render()
+						updateSearchResults()
 					}
 				}, [
 					if State.showDone {
@@ -350,11 +393,27 @@ fn TaskList() {
 		])
 		h(:div, ['task-list-list'], {
 			if State.search |> trim() {
-				'' -> if State.range {
-					'today' -> [State.Today] |> map(Day)
-					'week' -> State.WeekDays |> map(Day)
-					'month' -> State.MonthDays |> map(Day)
-					'all' -> State.results |> sort.sort(:due) |> reverse() |> map(Task)
+				'' -> {
+					past := if overdues := State.results |> filter(fn(t) t.due < State.Today) {
+						[] -> []
+						_ -> [
+							h(:div, ['day', 'day-overdue'], [
+								h(:div, ['day-header', 'flex-row'], [
+									'Overdue'
+									FlexSpacer()
+									len(overdues)
+								])
+								Tasks(overdues)
+							])
+						]
+					}
+					future := if State.range {
+						'today' -> [State.Today] |> map(Day)
+						'week' -> State.WeekDays |> map(Day)
+						'month' -> State.MonthDays |> map(Day)
+						'all' -> State.results |> sort.sort(:due) |> reverse() |> map(Task)
+					}
+					past |> append(future)
 				}
 				_ -> State.results |> map(Task)
 			}
@@ -369,16 +428,34 @@ fn TaskPageHeader(task) {
 				State.task := ?
 				render()
 			}
-		}, ['x'])
+		}, ['Close'])
 		FlexSpacer()
 		h(:button, ['task-page-header-delete'], { title: 'Delete task' }, {
 			click: fn {
+				State.task := ?
 				State.tasks := State.tasks |> filter(fn(t) t.id != task.id)
-				render()
+				updateSearchResults()
 			}
-		}, ['del'])
-		h(:button, ['task-page-header-postpone'], ['->']) // TODO: add another day
-		h(:button, ['task-page-header-magic'], ['!!']) // TODO: AI features
+		}, ['Delete'])
+		h(:button, ['task-page-header-prev'], { title: 'Pull forward 1 day' }, {
+			click: fn {
+				task.due := addDays(task.due, -1)
+				updateSearchResults()
+			}
+		}, ['←'])
+		h(:button, ['task-page-header-today'], { title: 'Make due day' }, {
+			click: fn {
+				task.due := today()
+				updateSearchResults()
+			}
+		}, ['↓'])
+		h(:button, ['task-page-header-next'], { title: 'Postpone 1 day' }, {
+			click: fn {
+				println(task.due)
+				task.due := addDays(task.due, 1)
+				updateSearchResults()
+			}
+		}, ['→'])
 	])
 }
 
@@ -399,55 +476,62 @@ fn TaskPage(task) {
 						}, fn(evt) {
 							task.text := evt.target.value
 							render()
+						}, fn(evt) {
+							evt.preventDefault()
+							focusFieldWithDataID(string(task.id) + '-body')
 						})
 					])
-					h(:div, ['task-editor-option-row', 'flex-row'], [
-						h(:input, ['task-editor-due-input'], {
-							type: 'date'
-							value: task.due
-						}, {
-							change: fn(evt) {
-								task.due := evt.target.value
-								render()
-							}
-						}, [])
-						h(:button, ['task-editor-due-reset'], { title: 'Unset due date' }, {
-							click: fn {
-								task.due := ?
-								render()
-							}
-						}, ['Unset'])
-						FlexSpacer()
-						h(:select, ['task-editor-category-select'], {}, {
-							change: fn(evt) {
-								task.cat := if value := evt.target.value {
-									'' -> ?
-									_ -> value
+					h(:div, ['task-editor-option-row'], [
+						h(:div, ['task-editor-option-subrow'], [
+							h(:input, ['task-editor-due-input'], {
+								type: 'date'
+								value: task.due
+							}, {
+								change: fn(evt) {
+									task.due := evt.target.value
+									render()
 								}
-								render()
-							}
-						}, [
-							h(:option, [], {
-								value: ''
-								selected: task.cat = ?
-							}, ['No category'])
-							h(:optgroup, [], { label: 'Categories' }, {
-								State.categories |> with map() fn(cat) {
-									h(:option, [], {
-										value: cat.id
-										selected: task.cat = cat.id
-									}, [cat.name])
+							}, [])
+							h(:button, ['task-editor-due-reset'], { title: 'Unset due date' }, {
+								click: fn {
+									task.due := ?
+									render()
 								}
-							})
+							}, ['Unset'])
 						])
-						h(:button, ['task-editor-category-edit'], {}, {
-							click: fn() editCategories()
-						}, ['Edit'])
+						h(:div, ['task-editor-option-subrow'], [
+							h(:select, ['task-editor-category-select'], {}, {
+								change: fn(evt) {
+									task.cat := if value := evt.target.value {
+										'' -> ?
+										_ -> value
+									}
+									render()
+								}
+							}, [
+								h(:option, [], {
+									value: ''
+									selected: task.cat = ?
+								}, ['No category'])
+								h(:optgroup, [], { label: 'Categories' }, {
+									State.categories |> with map() fn(cat) {
+										h(:option, [], {
+											value: cat.id
+											selected: task.cat = cat.id
+										}, [cat.name])
+									}
+								})
+							])
+							h(:button, ['task-editor-category-edit'], {}, {
+								click: fn() editCategories()
+							}, ['Edit'])
+						])
 					])
 					h(:div, ['task-editor-body'], [
 						Editable({
 							value: task.body
 							placeholder: 'Some more context'
+							'data-id': string(task.id) + '-body'
 						}, fn(evt) {
 							task.body := evt.target.value
 							render()
@@ -461,9 +545,28 @@ fn TaskPage(task) {
 
 fn CategoryEditor() {
 	h(:dialog, ['category-editor', 'flex-col'], [
-		h(:ul, ['category-editor-list'], {
+		h(:div, ['category-editor-header', 'flex-row'], [
+			h(:h2, ['Categories'])
+			FlexSpacer()
+			h(:button, ['dialog-close'], { title: 'Save and close' }, {
+				click: fn {
+					State.editingCategories? := false
+					render()
+				}
+			}, ['Done'])
+		])
+		h(:ul, ['category-editor-list', 'flex-col'], {
 			State.categories |> with map() fn(cat) {
-				h(:li, ['category-editor-item'], [
+				h(:li, ['category-editor-item', 'flex-row'], [
+					h(:input, ['category-editor-color-input'], {
+						type: 'color'
+						value: cat.color
+					}, {
+						input: fn(evt) {
+							cat.color := evt.target.value
+							render()
+						}
+					}, [])
 					h(:input, ['category-editor-name-input'], {
 						value: cat.name
 						placeholder: 'New category'
@@ -474,15 +577,12 @@ fn CategoryEditor() {
 							render()
 						}
 					}, [])
-					h(:input, ['category-editor-color-input'], {
-						type: 'color'
-						value: cat.color
-					}, {
-						input: fn(evt) {
-							cat.color := evt.target.value
+					if State.tasks |> filter(fn(t) t.cat = cat.id) = [] -> h(:button, ['category-editor-delete'], { title: 'Delete category' }, {
+						click: fn {
+							State.categories := State.categories |> filter(fn(c) c.id != cat.id)
 							render()
 						}
-					}, [])
+					}, ['X'])
 				])
 			}
 		})
@@ -499,12 +599,6 @@ fn CategoryEditor() {
 				focusFieldWithDataID(id)
 			}
 		}, ['+ New Category'])
-		h(:button, ['category-editor-done'], { title: 'Save and close' }, {
-			click: fn {
-				State.editingCategories? := false
-				render()
-			}
-		}, ['Done'])
 	])
 }
 
@@ -534,7 +628,12 @@ fn render {
 					}
 					render()
 				}
-			}, ['theme!'])
+			}, [
+				if State.theme {
+					'light' -> '🌘'
+					_ -> '☀️'
+				}
+			])
 		])
 		h(:main, ['flex-row'], [
 			TaskList()
@@ -556,15 +655,24 @@ fn render {
 }
 
 with document.body.addEventListener('keydown') fn(evt) if [evt.ctrlKey | evt.metaKey, evt.shiftKey, evt.key] {
+	[true, false, '/'] -> focusSearchField()
+	[true, false, 'k'] -> if State.task != ? -> focusFieldWithDataID(State.task)
 	[true, true, 'k'] -> addTaskAndFocus()
-	[true, false, '/']
-	[true, false, 'k'] -> focusSearchField()
 }
 
-// TODO: re-render once every 30s to update dates
+fn enqueueMinutelyUpdate {
+	render()
+	with wait(30) fn {
+		enqueueMinutelyUpdate()
+	}
+}
+enqueueMinutelyUpdate()
 
 // for browser renderer- or engine-dependent hacks, mark the body
 document.body.classList.add(string(ClientRenderer))
+
+// default blank search on first load
+updateSearchResults()
 
 render()
 
