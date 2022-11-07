@@ -516,7 +516,7 @@ fn TaskPageHeader(task) {
 		}, ['↘'])
 		FlexSpacer()
 		h(:button, ['task-page-header-delete'], { title: 'Delete task' }, {
-			click: fn {
+			click: fn() if confirm('Delete this task?') -> {
 				State.task := ?
 				State.tasks := State.tasks |> filter(fn(t) t.id != task.id)
 				updateSearchResults()
