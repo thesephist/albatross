@@ -2,6 +2,7 @@
 	println: println
 	default: default
 	range: range
+	is: is
 	map: map
 	take: take
 	find: find
@@ -9,6 +10,7 @@
 	filter: filter
 	append: append
 	reverse: reverse
+	debounce: debounce
 } := import('std')
 {
 	lower: lower
@@ -17,7 +19,12 @@
 } := import('str')
 fmt := import('fmt')
 sort := import('sort')
+random := import('random')
 datetime := import('datetime')
+json := {
+	parse: __native_json_parse
+	serialize: __native_json_serialize
+}
 uid := import('../lib/uid')
 {
 	Renderer: Renderer
@@ -25,6 +32,18 @@ uid := import('../lib/uid')
 } := import('../lib/torus.js')
 
 OneDay := 86400
+SyncInterval := 3
+Colors := [
+	'#11b6a5'
+	'#4e70c1'
+	'#715d8c'
+	'#8b5cb2'
+	'#8c5d5d'
+	'#90b847'
+	'#969696'
+	'#b25c5c'
+	'#cfab4a'
+]
 ClientRenderer := if {
 	navigator.userAgent |> strContains?('Firefox') -> :gecko
 	navigator.userAgent |> strContains?('Chrome') -> :blink
@@ -66,43 +85,39 @@ State := {
 
 	// state
 	theme: 'light'
-	syncing?: false // TODO: sync error indicator, prevent close if not synced
+	syncing?: false
 	editingCategories?: false
-	categories: [
-		{ id: demoID := uid.new(), name: 'Anthropic', color: '#abcdef' }
-		{ id: uid.new(), name: 'Thought & Craft', color: '#fedcba' }
-	]
 	task: ?
 	range: 'week'
 	search: ''
 	showDone: false
-	tasks: [
-		{
-			id: uid.new()
-			text: 'Do something.'
-			body: 'This is a body!\nAnother line.'
-			due: '2022-11-06'
-			done: ?
-			cat: demoID
-		}
-		{
-			id: uid.new()
-			text: 'Do something, #2'
-			body: 'This is a body!'
-			due: '2022-11-07'
-			done: ?
-			cat: demoID
-		}
-		{
-			id: uid.new()
-			text: 'Work on ClaudeScript parser'
-			body: 'This is a body!'
-			due: '2022-11-08'
-			done: ?
-			cat: demoID
-		}
-	]
+	categories: Preload.categories
+	tasks: Preload.tasks
 	results: []
+}
+
+sync := with debounce(SyncInterval) fn syncImmediately {
+	State.syncing? := true
+	render()
+
+	resp := fetch('/tasks', {
+		method: 'PUT'
+		headers: {
+			'Content-Type': 'application/json'
+		}
+		body: json.serialize({
+			categories: State.categories
+			tasks: State.tasks
+		})
+	})
+	resp |> call(:catch, fn(err) {
+		State.syncing? := String(err)
+		render()
+	})
+	resp.then(fn {
+		State.syncing? := false
+		render()
+	})
 }
 
 fn dayName(day) {
@@ -185,7 +200,8 @@ fn addTaskAndFocus() {
 		cat: ?
 	}
 	State.task := id
-	render()
+	sync()
+	updateSearchResults()
 
 	focusFieldWithDataID(id)
 }
@@ -237,7 +253,12 @@ fn Category(id) {
 			style: {
 				background: cat.color
 			}
-		}, [cat.name])
+		}, [
+			if cat.name {
+				'' -> 'Unnamed category'
+				_ -> cat.name
+			}
+		])
 	}
 }
 
@@ -253,7 +274,9 @@ fn Task(task) {
 				task.id -> 'active'
 				_ -> ''
 			}
-		], [
+		], {
+			'data-task-id': task.id
+		}, [
 			h(:label, ['task-status'], [
 				h(:input, ['task-checkbox'], {
 					type: 'checkbox'
@@ -264,6 +287,7 @@ fn Task(task) {
 							? -> today()
 							_ -> ?
 						}
+						sync()
 						render()
 
 						// give user a second to visually confirm checked
@@ -298,7 +322,18 @@ fn Task(task) {
 						_ -> task.text
 					}
 				])
-				h(:div, ['task-body-preview'], [task.body])
+				h(:div, ['task-body-preview'], [
+					if {
+						State.search |> trim() != ''
+						State.range = 'all' -> if task.due != ? -> {
+							h(:span, [], [
+								h(:span, ['task-due'], [fmtDay(task.due)])
+								if task.body |> trim() != '' -> ' · '
+							])
+						}
+					}
+					task.body
+				])
 				if task.cat != ? -> h(:div, ['task-category'], [
 					Category(task.cat)
 				])
@@ -357,6 +392,17 @@ fn TaskList() {
 				}, ['+'])
 			])
 			h(:div, ['task-list-search-row', 'flex-row'], [
+				h(:button, ['task-list-show-done'], { title: 'Show tasks marked as done' }, {
+					click: fn {
+						State.showDone := !State.showDone
+						updateSearchResults()
+					}
+				}, [
+					if State.showDone {
+						true -> 'Hide done'
+						_ -> 'Show done'
+					}
+				])
 				h(:select, ['task-list-range-select'], {
 					value: State.range
 				}, {
@@ -378,17 +424,6 @@ fn TaskList() {
 
 					}
 				})
-				h(:button, ['task-list-show-done'], { title: 'Show tasks marked as done' }, {
-					click: fn {
-						State.showDone := !State.showDone
-						updateSearchResults()
-					}
-				}, [
-					if State.showDone {
-						true -> 'Hide done'
-						_ -> 'Show done'
-					}
-				])
 			])
 		])
 		h(:div, ['task-list-list'], {
@@ -407,13 +442,12 @@ fn TaskList() {
 							])
 						]
 					}
-					future := if State.range {
-						'today' -> [State.Today] |> map(Day)
-						'week' -> State.WeekDays |> map(Day)
-						'month' -> State.MonthDays |> map(Day)
+					if State.range {
+						'today' -> past |> append([State.Today] |> map(Day))
+						'week' -> past |> append(State.WeekDays |> map(Day))
+						'month' -> past |> append(State.MonthDays |> map(Day))
 						'all' -> State.results |> sort.sort(:due) |> reverse() |> map(Task)
 					}
-					past |> append(future)
 				}
 				_ -> State.results |> map(Task)
 			}
@@ -422,6 +456,16 @@ fn TaskList() {
 }
 
 fn TaskPageHeader(task) {
+	fn swapTasks(t1, t2) {
+		State.tasks := State.tasks |> map(fn(t) if t.id {
+			t1.id -> t2
+			t2.id -> t1
+			_ -> t
+		})
+		sync()
+		updateSearchResults()
+	}
+
 	h(:div, ['task-page-header', 'flex-row'], [
 		h(:button, ['task-page-header-close'], { title: 'Close' }, {
 			click: fn {
@@ -429,6 +473,30 @@ fn TaskPageHeader(task) {
 				render()
 			}
 		}, ['Close'])
+		h(:button, ['task-page-header-up'], { title: 'Move up in list' }, {
+			click: fn {
+				taskIDs := Array.from(document.querySelectorAll('[data-task-id]')) |>
+					map(fn(e) e.getAttribute('data-task-id'))
+				if ? != prevTaskID := taskIDs.(taskIDs |> find(is(task.id)) - 1) -> {
+					swapTasks(
+						State.tasks.(State.tasks |> find(fn(t) t.id = prevTaskID))
+						task
+					)
+				}
+			}
+		}, ['↖'])
+		h(:button, ['task-page-header-down'], { title: 'Move down in list' }, {
+			click: fn {
+				taskIDs := Array.from(document.querySelectorAll('[data-task-id]')) |>
+					map(fn(e) e.getAttribute('data-task-id'))
+				if ? != nextTaskID := taskIDs.(taskIDs |> find(is(task.id)) + 1) -> {
+					swapTasks(
+						State.tasks.(State.tasks |> find(fn(t) t.id = nextTaskID))
+						task
+					)
+				}
+			}
+		}, ['↘'])
 		FlexSpacer()
 		h(:button, ['task-page-header-delete'], { title: 'Delete task' }, {
 			click: fn {
@@ -475,6 +543,7 @@ fn TaskPage(task) {
 							'data-id': task.id
 						}, fn(evt) {
 							task.text := evt.target.value
+							sync()
 							render()
 						}, fn(evt) {
 							evt.preventDefault()
@@ -489,12 +558,14 @@ fn TaskPage(task) {
 							}, {
 								change: fn(evt) {
 									task.due := evt.target.value
+									sync()
 									render()
 								}
 							}, [])
 							h(:button, ['task-editor-due-reset'], { title: 'Unset due date' }, {
 								click: fn {
 									task.due := ?
+									sync()
 									render()
 								}
 							}, ['Unset'])
@@ -506,6 +577,7 @@ fn TaskPage(task) {
 										'' -> ?
 										_ -> value
 									}
+									sync()
 									render()
 								}
 							}, [
@@ -518,7 +590,12 @@ fn TaskPage(task) {
 										h(:option, [], {
 											value: cat.id
 											selected: task.cat = cat.id
-										}, [cat.name])
+										}, [
+											if cat.name {
+												'' -> 'Unnamed category'
+												_ -> cat.name
+											}
+										])
 									}
 								})
 							])
@@ -534,6 +611,7 @@ fn TaskPage(task) {
 							'data-id': string(task.id) + '-body'
 						}, fn(evt) {
 							task.body := evt.target.value
+							sync()
 							render()
 						})
 					])
@@ -564,6 +642,7 @@ fn CategoryEditor() {
 					}, {
 						input: fn(evt) {
 							cat.color := evt.target.value
+							sync()
 							render()
 						}
 					}, [])
@@ -574,12 +653,14 @@ fn CategoryEditor() {
 					}, {
 						input: fn(evt) {
 							cat.name := evt.target.value
+							sync()
 							render()
 						}
 					}, [])
 					if State.tasks |> filter(fn(t) t.cat = cat.id) = [] -> h(:button, ['category-editor-delete'], { title: 'Delete category' }, {
 						click: fn {
 							State.categories := State.categories |> filter(fn(c) c.id != cat.id)
+							sync()
 							render()
 						}
 					}, ['X'])
@@ -592,8 +673,9 @@ fn CategoryEditor() {
 				State.categories << {
 					id: id
 					name: ''
-					color: '#abcdef' // TODO: random color picker?
+					color: random.choice(Colors)
 				}
+				sync()
 				render()
 
 				focusFieldWithDataID(id)
@@ -615,6 +697,14 @@ fn render {
 		h(:header, ['flex-row'], [
 			h(:a, ['logo'], { href: '/' }, ['Albatross'])
 			FlexSpacer()
+			if errMsg := State.syncing? {
+				true, false -> ? // don't report normal states
+				_ -> h(:button, ['sync-try-again'], {
+					title: 'Sync error: {{0}}\nClick to try again.' |> fmt.format(errMsg)
+				}, {
+					click: fn() syncImmediately()
+				}, ['⚠️'])
+			}
 			h(:button, ['theme-button'], {
 				title: if State.theme {
 					'light' -> 'Dark mode'

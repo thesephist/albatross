@@ -9,11 +9,11 @@ http := import('http')
 
 Port := 9888
 StaticDir := './static'
-DataFile := './data/tasks.json'
+DataFile := './data/db.json'
 
 // create DataFile if not already exists
 if fs.statFile(DataFile) = ? -> {
-	if fs.writeFile(DataFile, '[]') = ? -> {
+	if fs.writeFile(DataFile, '{ categories: [], tasks: [] }') = ? -> {
 		std.println('error: could not create db')
 		exit(1)
 	}
@@ -34,7 +34,7 @@ fn serveIndex(end) with fs.readFile(path.join(StaticDir, 'index.html')) fn(file)
 		_ -> end({
 			status: 200
 			headers: { 'Content-Type': http.MimeTypes.html }
-			body: file |> fmt.format({ tasksPreload: dataFile })
+			body: file |> fmt.format({ preload: dataFile })
 		})
 	}
 }
@@ -48,7 +48,7 @@ with server.route('/tasks') fn(params) fn(req, end) if req.method {
 			body: file
 		})
 	}
-	'POST', 'PUT' -> with fs.writeFile(DataFile, req.body) fn(res) if res {
+	'PUT' -> with fs.writeFile(DataFile, req.body) fn(res) if res {
 		? -> end({
 			status: 500
 			headers: { 'Content-Type': http.MimeTypes.txt }
