@@ -13,7 +13,7 @@ DataFile := './data/db.json'
 
 // create DataFile if not already exists
 if fs.statFile(DataFile) = ? -> {
-	if fs.writeFile(DataFile, '{ categories: [], tasks: [] }') = ? -> {
+	if fs.writeFile(DataFile, '{ "categories": [], "tasks": [] }') = ? -> {
 		std.println('error: could not create db')
 		exit(1)
 	}
@@ -27,7 +27,7 @@ fn err(msg) {
 	body: msg
 }
 
-fn serveIndex(end) with fs.readFile(path.join(StaticDir, 'index.html')) fn(file) if file {
+fn serveIndex(end) with fs.readFile(path.join(StaticDir, 'dyn-index.html')) fn(file) if file {
 	? -> end(http.NotFound)
 	_ -> with fs.readFile(DataFile) fn(dataFile) if dataFile {
 		? -> end(http.NotFound)

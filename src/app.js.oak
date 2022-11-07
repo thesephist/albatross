@@ -33,6 +33,8 @@ uid := import('../lib/uid')
 
 OneDay := 86400
 SyncInterval := 3
+LocalStorageKey := 'albatross:0'
+ColorSchemeKey := 'albatross:theme'
 Colors := [
 	'#11b6a5'
 	'#4e70c1'
@@ -44,6 +46,7 @@ Colors := [
 	'#b25c5c'
 	'#cfab4a'
 ]
+UseLocalStorage? := Preload = ?
 ClientRenderer := if {
 	navigator.userAgent |> strContains?('Firefox') -> :gecko
 	navigator.userAgent |> strContains?('Chrome') -> :blink
@@ -77,6 +80,12 @@ fn addDays(day, n) {
 		take(10)
 }
 
+if Preload = ? -> {
+	Preload <- window.localStorage.getItem(LocalStorageKey) |>
+		default('{ "categories": [], "tasks": [] }') |>
+		json.parse()
+}
+
 State := {
 	// constants
 	Today: today()
@@ -84,7 +93,7 @@ State := {
 	MonthDays: dayList(30)
 
 	// state
-	theme: 'light'
+	theme: window.localStorage.getItem(ColorSchemeKey) |> default('light')
 	syncing?: false
 	editingCategories?: false
 	task: ?
@@ -100,24 +109,33 @@ sync := with debounce(SyncInterval) fn syncImmediately {
 	State.syncing? := true
 	render()
 
-	resp := fetch('/tasks', {
-		method: 'PUT'
-		headers: {
-			'Content-Type': 'application/json'
-		}
-		body: json.serialize({
+	if UseLocalStorage? {
+		true -> window.localStorage.setItem(LocalStorageKey, json.serialize({
 			categories: State.categories
 			tasks: State.tasks
-		})
-	})
-	resp |> call(:catch, fn(err) {
-		State.syncing? := String(err)
-		render()
-	})
-	resp.then(fn {
-		State.syncing? := false
-		render()
-	})
+		}))
+		_ -> {
+			resp := fetch('/tasks', {
+				method: 'PUT'
+				headers: {
+					'Content-Type': 'application/json'
+				}
+				body: json.serialize({
+					categories: State.categories
+					tasks: State.tasks
+				})
+			})
+			resp |> call(:catch, fn(err) {
+				State.syncing? := String(err)
+				render()
+			})
+			resp.then(fn {
+				State.syncing? := false
+				render()
+			})
+		}
+	}
+
 }
 
 fn dayName(day) {
@@ -713,6 +731,7 @@ fn render {
 						'light' -> 'dark'
 						_ -> 'light'
 					}
+					window.localStorage.setItem(ColorSchemeKey, State.theme)
 					render()
 				}
 			}, [
@@ -763,4 +782,6 @@ document.body.classList.add(string(ClientRenderer))
 updateSearchResults()
 
 render()
+
+// TODO: onbeforeunload
 
