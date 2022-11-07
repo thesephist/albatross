@@ -365,7 +365,6 @@ fn Day(day) {
 }
 
 fn TaskList() {
-	// TODO: dall-e generated empty state
 	h(:div, ['task-list'], [
 		h(:div, ['task-list-search', 'flex-col'], [
 			h(:div, ['task-list-search-row', 'flex-row'], [
@@ -530,9 +529,7 @@ fn TaskPageHeader(task) {
 fn TaskPage(task) {
 	h(:div, ['task-page'], {
 		if task {
-			? -> [
-				h(:div, ['task-page-empty'], []) // TODO: DALL-E empty state graphic
-			]
+			? -> [h(:div, ['task-page-empty'], [])]
 			_ -> [
 				TaskPageHeader(task)
 				h(:div, ['task-editor', 'flex-col'], [
@@ -734,7 +731,8 @@ fn render {
 			)
 		])
 		h(:footer, [
-			'Albatross, a way to organize life, by '
+			h(:a, [], { href: 'https://github.com/thesephist/albatross', target: '_blank' }, ['Albatross'])
+			', a way to organize life, by '
 			h(:a, [], { href: 'https://thesephist.com', target: '_blank' }, ['L'])
 			' for '
 			h(:a, [], { href: 'https://karinanguyen.com', target: '_blank' }, ['K'])
