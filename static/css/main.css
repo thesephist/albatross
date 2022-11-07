@@ -202,7 +202,7 @@ input[type="checkbox"]:checked::before {
     background: var(--accent);
 }
 
-input[type="checkbox"]::after {
+input[type="checkbox"]:checked::after {
     content: '';
     visibility: visible;
     position: absolute;
