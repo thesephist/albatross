@@ -1,0 +1,36 @@
+{
+	default: default
+	range: range
+	map: map
+	take: take
+} := import('std')
+datetime := import('datetime')
+
+OneDay := 86400
+
+fn dayList(n, dir) {
+	dir := dir |> default(:future)
+	dayCounts := if dir {
+		:future -> range(n)
+		:past -> range(1 - n, 1)
+	}
+	now := int(time())
+	tzOffset := new(Date).getTimezoneOffset()
+	dayCounts |> map(fn(n) {
+		datetime.format(now + n * OneDay, tzOffset) |> take(10)
+	})
+}
+
+fn today() dayList(1).0
+
+fn tomorrow() dayList(2).1
+
+fn yesterday() dayList(2, :past).0
+
+fn addDays(day, n) {
+	desc := datetime.parse(day + 'T00:00:00')
+	(datetime.timestamp(desc) + n * OneDay) |>
+		datetime.format() |>
+		take(10)
+}
+

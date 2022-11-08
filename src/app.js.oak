@@ -1,10 +1,8 @@
 {
 	println: println
 	default: default
-	range: range
 	is: is
 	map: map
-	take: take
 	find: find
 	last: last
 	slice: slice
@@ -31,8 +29,15 @@ uid := import('../lib/uid')
 	Renderer: Renderer
 	h: h
 } := import('../lib/torus.js')
+{
+	dayList: dayList
+	today: today
+	tomorrow: tomorrow
+	yesterday: yesterday
+	addDays: addDays
+} := import('dateutils.js')
+defaults := import('defaults.js')
 
-OneDay := 86400
 SyncInterval := 3
 LocalStorageKey := 'albatross:0'
 ColorSchemeKey := 'albatross:theme'
@@ -55,36 +60,11 @@ ClientRenderer := if {
 	_ -> :unknownRenderer
 }
 
-fn dayList(n, dir) {
-	dir := dir |> default(:future)
-	dayCounts := if dir {
-		:future -> range(n)
-		:past -> range(1 - n, 1)
-	}
-	now := int(time())
-	tzOffset := new(Date).getTimezoneOffset()
-	dayCounts |> map(fn(n) {
-		datetime.format(now + n * OneDay, tzOffset) |> take(10)
-	})
-}
-
-fn today() dayList(1).0
-
-fn tomorrow() dayList(2).1
-
-fn yesterday() dayList(2, :past).0
-
-fn addDays(day, n) {
-	desc := datetime.parse(day + 'T00:00:00')
-	(datetime.timestamp(desc) + n * OneDay) |>
-		datetime.format() |>
-		take(10)
-}
-
 if Preload = ? -> {
-	Preload <- window.localStorage.getItem(LocalStorageKey) |>
-		default('{ "categories": [], "tasks": [] }') |>
-		json.parse()
+	Preload <- if persisted := window.localStorage.getItem(LocalStorageKey) {
+		? -> defaults.DefaultData
+		_ -> json.parse(persisted)
+	}
 }
 
 State := {
@@ -111,10 +91,14 @@ enqueueSync := with debounce(SyncInterval) fn syncImmediately {
 	render()
 
 	if UseLocalStorage? {
-		true -> window.localStorage.setItem(LocalStorageKey, json.serialize({
-			categories: State.categories
-			tasks: State.tasks
-		}))
+		true -> {
+			window.localStorage.setItem(LocalStorageKey, json.serialize({
+				categories: State.categories
+				tasks: State.tasks
+			}))
+			State.syncing? := false
+			render()
+		}
 		_ -> {
 			resp := fetch('/tasks', {
 				method: 'PUT'
@@ -432,6 +416,7 @@ fn TaskList() {
 				h(:button, ['task-list-show-done'], { title: 'Show tasks marked as done' }, {
 					click: fn {
 						State.showDone := !State.showDone
+						sync()
 						updateSearchResults()
 					}
 				}, [
@@ -539,25 +524,28 @@ fn TaskPageHeader(task) {
 			click: fn() if confirm('Delete this task?') -> {
 				State.task := ?
 				State.tasks := State.tasks |> filter(fn(t) t.id != task.id)
+				sync()
 				updateSearchResults()
 			}
 		}, ['Delete'])
 		h(:button, ['task-page-header-prev'], { title: 'Pull forward 1 day' }, {
 			click: fn {
 				task.due := addDays(task.due, -1)
+				sync()
 				updateSearchResults()
 			}
 		}, ['←'])
 		h(:button, ['task-page-header-today'], { title: 'Make due day' }, {
 			click: fn {
 				task.due := today()
+				sync()
 				updateSearchResults()
 			}
 		}, ['↓'])
 		h(:button, ['task-page-header-next'], { title: 'Postpone 1 day' }, {
 			click: fn {
-				println(task.due)
 				task.due := addDays(task.due, 1)
+				sync()
 				updateSearchResults()
 			}
 		}, ['→'])

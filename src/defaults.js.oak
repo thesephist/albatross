@@ -1,0 +1,67 @@
+{
+	today: today
+	tomorrow: tomorrow
+} := import('dateutils.js')
+
+DefaultData := {
+	categories: [
+		{
+			id: 'xmFWgdzyhWVHmkMA'
+			name: 'Side Projects'
+			color: '#11b6a5'
+		}
+		{
+			id: 'JuVAgJQzI6IQCquO'
+			name: 'Networking'
+			color: '#90b847'
+		}
+		{
+			id: 'TQkckfPUXfsOnQFK'
+			name: 'Writing'
+			color: '#4e70c1'
+		}
+	]
+	tasks: [
+		{
+			id: 'ckgtqfVmMPrzn5jv'
+			text: 'How to use Albatross 🤔'
+			body: 'Albatross is very minimal\n- Create todos and filter/search in the left sidebar\n- If you click on a todo, it\'ll open on the right side (or in a new view on mobile)\n- The diagonal arrow buttons move the todo up/down in the left sidebar (it\'s a little buggy)\n- The left/bottom/right buttons above move the current todo\'s due date forward 1 day, to today, or backward 1 day, respectively\n- Use the \"Edit\" button to create new categories or edit existing ones\n- Switch light/dark theme with the button in the top right corner\n\nKeyboard shortcuts\n- Ctrl/Cmd+K to focus the title field of a todo\n- Ctrl/Cmd+/ to focus the search field\n- Ctrl/Cmd+Shift+K to create a new todo\n\nMore information at https://github.com/thesephist/albatross'
+			due: today()
+			done: ?
+			cat: 'xmFWgdzyhWVHmkMA'
+		}
+		{
+			id: 'HWqMlNluXUtYRBqN'
+			text: 'Send email connecting Theo and James'
+			body: 'They should talk more about tools for thought!'
+			due: today()
+			done: ?
+			cat: 'JuVAgJQzI6IQCquO'
+		}
+		{
+			id: 'by3oDreliq6EKrMK'
+			text: 'Write a short sci-fi piece about LLMs and in-context learning'
+			body: 'Geoffrey told me this could be an interesting idea for a sci-fi story!'
+			due: today()
+			done: ?
+			cat: 'TQkckfPUXfsOnQFK'
+		}
+		{
+			id: '9rxjTrmIGs2JpaOV'
+			text: 'Launch Albatross 🪶'
+			body: 'Before launch\n- Make sure page has social images + head tags\n- Finish writing a README\n\nAfter launch\n- Post to Twitter\n- Post to Linkedin'
+			due: tomorrow()
+			done: ?
+			cat: 'xmFWgdzyhWVHmkMA'
+		}
+		{
+			id: 'yOkTFzRnYCCVwKfv'
+			text: 'Write research report about latent space models'
+			body: ''
+			due: tomorrow()
+			done: ?
+			cat: 'TQkckfPUXfsOnQFK'
+		}
+	]
+}
+
