@@ -17,7 +17,7 @@ fn dayList(n, dir) {
 	now := int(time())
 	tzOffset := new(Date).getTimezoneOffset()
 	dayCounts |> map(fn(n) {
-		datetime.format(now + n * OneDay, tzOffset) |> take(10)
+		datetime.format(now + n * OneDay, -tzOffset) |> take(10)
 	})
 }
 
