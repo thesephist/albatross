@@ -32,7 +32,10 @@ dialog::backdrop,
     --active-accent: #891111;
 }
 
-.dark {
+.dark,
+.dark dialog::backdrop,
+.dark *::before,
+.dark *::after {
     --primary-bg: var(--dark-primary-bg);
     --primary-text: var(--dark-primary-text);
     --secondary-bg: var(--dark-secondary-bg);
