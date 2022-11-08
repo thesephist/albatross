@@ -1,6 +1,6 @@
 # Albatross 🪶
 
-**Albatross** is a little to-do list app I made for myself and [Karina](https://karinanguyen.com/) to distract myself from [more important responsibilities](https://twitter.com/thesephist/status/1588795933096964096). It's designed mainly for myself, so it prioritizes simplicity, and fitting my own personal needs. However, if you really must try it, you can go see a [demo here](https://albatross.oaklang.org/).
+**Albatross** is a little to-do list app I made for myself and [Karina](https://karinanguyen.com/) to distract myself from [more important responsibilities](https://twitter.com/thesephist/status/1588795933096964096). It's designed mainly for the two of us, so it prioritizes simplicity and fitting our specific needs and preferences. However, if you really must try it, you can go see a [demo here](https://albatross.oaklang.org/).
 
 ![Albatross's desktop web view](static/img/albatross-social.png)
 
